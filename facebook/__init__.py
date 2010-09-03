@@ -1604,7 +1604,7 @@ class Facebook(object):
 
 
     def get_login_url(self, next=None, popup=False, canvas=True,
-                      required_permissions=None):
+                      required_permissions=None, state=None):
         """
         Returns the URL that the user should be redirected to in order to login.
 
@@ -1623,6 +1623,9 @@ class Facebook(object):
             
             if popup:
                 args['display'] = 'popup'
+            
+            if state:
+                args['state'] = state
             
             return self.get_graph_url('oauth/authorize', **args)
         else:

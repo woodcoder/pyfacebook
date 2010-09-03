@@ -249,12 +249,13 @@ def _redirect_login(request, fb, redirect_path, keep_state, required_permissions
             state = keep_state(request)
         else:
             state = request.get_full_path()
-        # passing state directly to facebook oauth endpoint doesn't work
-        redirect_uri += '?state=%s' % urlquote(state)
+        state = urlquote(state)
+    else:
+        state = None
 
-    return fb.redirect(
-        fb.get_login_url(next=redirect_uri,
-            required_permissions=required_permissions)) 
+    authorize_url = fb.get_login_url(next=redirect_uri, state=state,
+                                     required_permissions=required_permissions)
+    return fb.redirect(authorize_url) 
 
 
 def process_oauth(restore_state=True):
@@ -275,7 +276,10 @@ def process_oauth(restore_state=True):
             fb = _check_middleware(request)
 
             # Work out what the original redirect_uri value was
-            redirect_uri = fb.url_for(_strip_code(request.get_full_path()))
+            params = ['code']
+            if restore_state:
+                params.append('state')
+            redirect_uri = fb.url_for(_strip_params(request.get_full_path(), params))
 
             if fb.oauth2_process_code(request, redirect_uri):
                 if restore_state:
@@ -292,23 +296,29 @@ def process_oauth(restore_state=True):
     return decorator
 
 
-def _strip_code(path):
+def _strip_params(path, params):
     """
-    Restore the path to the original redirect_uri without the code parameter.
+    Restore the path to the original redirect_uri without the parameters such
+    as code and state.
     
     """
-    try:
-        begin = path.find('&code')
-        if begin == -1:
-            begin = path.index('?code')
-        end = path.find('&', begin+1)
-        if end == -1:
-            end = len(path)
-        return path[:begin] + path[end:]
-    except ValueError:
-        # no code, probably failed to authenticate
-        # TODO strip error_reason instead here?
-        return path
+    for param in params:
+        try:
+            offset = 1
+            begin = path.rfind('&%s' % param)
+            if begin == -1:
+                begin = path.index('?%s' % param)
+            end = path.find('&', begin+1)
+            if end == -1:
+                end = len(path)
+                # no trailing &, so remove front one instead
+                offset = 0
+            path = path[:begin+offset] + path[end+offset:]
+        except ValueError:
+            # no param, possibly failed to authenticate
+            # TODO strip error_reason instead here?
+            pass
+    return path
 
 
 def require_login(next=None, internal=None, required_permissions=None):
